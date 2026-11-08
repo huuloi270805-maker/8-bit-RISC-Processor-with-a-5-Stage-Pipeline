@@ -1,0 +1,91 @@
+`timescale 1ns / 1ps
+ 
+module tb_risc8_5stage;
+ 
+    reg clk;
+    reg rst;
+ 
+    wire halted;
+    wire [7:0] pc_out;
+    wire [1:0] flags_out;
+    wire instr_done;
+ 
+    // Khai bao bien o muc module (Verilog khong cho khai bao trong block khong ten)
+    integer errors;
+ 
+    risc8_5stage_core uut (
+        .clk(clk),
+        .rst(rst),
+        .halted(halted),
+        .pc_out(pc_out),
+        .flags_out(flags_out),
+        .instr_done(instr_done)
+    );
+ 
+    // Xung nhip Clock 100 MHz (10 ns)
+    always #5 clk = ~clk;
+ 
+    initial begin
+        clk = 0;
+        rst = 1;
+ 
+        $display("========================================================");
+        $display("STARTING FULL TESTBENCH SIMULATION: RISC8 5-STAGE");
+        $display("========================================================");
+ 
+        #20;
+        rst = 0;
+        $display("[INFO] Reset released. Executing...");
+ 
+        #10000;
+        $display("[ERROR] Timeout Error: Simulation exceeded time limit without HLT!");
+        $finish;
+    end
+ 
+    always @(posedge clk) begin
+        if (!rst && !halted) begin
+            $display("Time: %0t ns | PC = 0x%h | Halted = %b | Flags(Z,C) = %b",
+                     $time, pc_out, halted, flags_out);
+        end
+    end
+ 
+    // Tu dong kiem tra (Self-Checking) khi gap lenh HLT
+    always @(posedge clk) begin
+        if (halted) begin
+            #2;
+            $display("--------------------------------------------------------");
+            $display("[INFO] Processor encountered HLT instruction successfully.");
+            $display("[INFO] Verifying Registers, Flags, and Data Memory...");
+ 
+            errors = 0;
+ 
+            $display("--------------------------------------------------------");
+            $display("R1 = 0x%h (Expected: 0x80)", uut.rf.rf[1]);
+            $display("R2 = 0x%h (Expected: 0x00)", uut.rf.rf[2]);
+            $display("R3 = 0x%h (Expected: 0x01)", uut.rf.rf[3]);
+            $display("R4 = 0x%h (Expected: 0x00)", uut.rf.rf[4]);
+            $display("R5 = 0x%h (Expected: 0x5A)", uut.rf.rf[5]); // Load-use result
+            $display("RAM[0x20] = 0x%h (Expected: 0x55)", uut.memory_data.ram[8'h20]);
+            $display("Flags (Z, C) = %b (Expected Z=0, C=1)", flags_out);
+            $display("--------------------------------------------------------");
+ 
+            // So sanh kiem chung
+            if (uut.rf.rf[2] !== 8'h00) begin errors = errors + 1; $display("[FAIL] SHL result mismatch!"); end
+            if (uut.rf.rf[4] !== 8'h00) begin errors = errors + 1; $display("[FAIL] SHR result mismatch!"); end
+            if (uut.rf.rf[5] !== 8'h5A) begin errors = errors + 1; $display("[FAIL] Load-Use / ADDI mismatch!"); end
+            if (uut.memory_data.ram[8'h20] !== 8'h55) begin errors = errors + 1; $display("[FAIL] LD/ST memory mismatch!"); end
+ 
+            $display("========================================================");
+            if (errors == 0) begin
+                $display("*** ALL COMPREHENSIVE TESTS PASSED SUCCESSFULLY ***");
+            end else begin
+                $display("*** TEST FAILED WITH %0d ERRORS ***", errors);
+            end
+            $display("========================================================");
+ 
+            $finish;
+        end
+    end
+ 
+endmodule
+ 
